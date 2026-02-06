@@ -9,10 +9,10 @@ const client = new Client({
   ]
 });
 
-// Config
+// Config — CHANGED PREFIX TO !!
 const PREFIX = '!!';
 
-// GIF whitelists
+// GIF whitelists (unchanged)
 const whitelistedGIFs = new Set();
 const GIF_PATTERNS = [
   '.gif',
@@ -24,13 +24,13 @@ const GIF_PATTERNS = [
 
 // Automod words
 const blacklistedWords = new Set();          // triggers deletion
-const whitelistedExceptions = new Set();     // keeps message even if bad word present (unused for now)
+const whitelistedExceptions = new Set();     // keeps message even if bad word present
 
-// Allowed roles that bypass everything (from .env)
+// Allowed roles bypass everything (from .env)
 const allowedRoleNames = (process.env.ALLOWED_ROLES || 'Admin,Moderator').split(',').map(r => r.trim().toLowerCase());
 
-// NEW: Specific role name that bypasses automod (GIF + word checks)
-const AUTOMOD_BYPASS_ROLE = 'automod bypass';  // case-insensitive
+// Automod Bypass role name (case-insensitive)
+const AUTOMOD_BYPASS_ROLE = 'automod bypass';
 
 client.once('ready', async () => {
   console.log(`Vurah Bot online! Prefix: ${PREFIX} | Tag: ${client.user.tag}`);
@@ -52,8 +52,7 @@ client.once('ready', async () => {
       .setDescription('View automod word lists and how to manage them')
   ];
 
-const guildId = '1456434255532916907';  // right-click server icon → Copy Server ID (enable Developer Mode in Discord settings if not visible)
-await client.application.commands.set(commands, guildId);
+  await client.application.commands.set(commands);
   console.log('Slash commands registered');
 });
 
@@ -95,12 +94,12 @@ client.on('interactionCreate', async interaction => {
       .setDescription(
         `**Blacklisted words** (triggers deletion):\n${badList}\n\n` +
         `**Exceptions** (safe even with blacklisted words):\n${goodList}\n\n` +
-        `**Manage with prefix ,**`
+        `**Manage with prefix ${PREFIX}**`
       )
       .addFields(
-        { name: `,addword <word>`, value: `Add to blacklist`, inline: true },
-        { name: `,removeword <word>`, value: `Remove from blacklist`, inline: true },
-        { name: `,setup automod`, value: `Show this`, inline: true }
+        { name: `${PREFIX}addword <word>`, value: `Add to blacklist`, inline: true },
+        { name: `${PREFIX}removeword <word>`, value: `Remove from blacklist`, inline: true },
+        { name: `${PREFIX}setup automod`, value: `Show this`, inline: true }
       )
       .setFooter({ text: 'Vurah Bot' });
 
@@ -113,20 +112,18 @@ client.on('messageCreate', async message => {
 
   const member = message.member;
 
-  // Bypass checks (order: admin > allowed roles > automod bypass role)
   if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
 
   const hasAllowedRole = member.roles.cache.some(role => allowedRoleNames.includes(role.name.toLowerCase()));
   if (hasAllowedRole) return;
 
-  // NEW: Automod Bypass role check
   const hasAutomodBypass = member.roles.cache.some(role => role.name.toLowerCase() === AUTOMOD_BYPASS_ROLE);
   if (hasAutomodBypass) return;
 
   const content = message.content.trim();
   const lowerContent = content.toLowerCase();
 
-  // Prefix commands (only mods can use)
+  // Prefix commands (only mods)
   if (content.startsWith(PREFIX)) {
     if (!canManage(member)) {
       return message.reply("Mods only for setup.").catch(() => {});
@@ -137,7 +134,6 @@ client.on('messageCreate', async message => {
     let reply = '';
 
     if (command === 'setup' && args[0]?.toLowerCase() === 'automod') {
-      // same embed as slash
       const badList = blacklistedWords.size ? Array.from(blacklistedWords).map(w => `- ${w}`).join('\n') : 'None yet';
       const goodList = whitelistedExceptions.size ? Array.from(whitelistedExceptions).map(w => `- ${w}`).join('\n') : 'None';
       const embed = new EmbedBuilder()
@@ -182,7 +178,7 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  // Deletion logic (GIF + words) - only reaches here if no bypass
+  // Deletion logic (GIF + words)
   let shouldDelete = false;
   let reason = '';
   let detected = '';
@@ -230,7 +226,6 @@ client.on('messageCreate', async message => {
         reason = 'Blacklisted word';
         detected = bad;
 
-        // Optional exception check
         let hasException = false;
         for (const good of whitelistedExceptions) {
           if (lowerContent.includes(good)) {
@@ -249,13 +244,17 @@ client.on('messageCreate', async message => {
   if (shouldDelete) {
     try {
       await message.delete();
+
+      // Visible reply — made it stand out more
       const embed = new EmbedBuilder()
-        .setColor('#FF5555')
-        .setTitle('Message Removed')
-        .setDescription(`Reason: ${reason}${detected ? ` (${detected})` : ''}`)
-        .setFooter({ text: 'Vurah Bot' });
+        .setColor('#FF0000')                    // bright red so it's visible
+        .setTitle('Message Deleted by Vurah Bot')
+        .setDescription(`**Reason:** ${reason}${detected ? ` (${detected})` : ''}\n\nThis message violated server rules.`)
+        .setFooter({ text: 'Vurah Bot • Auto-moderation' })
+        .setTimestamp();
 
       await message.channel.send({ embeds: [embed] }).catch(() => {});
+
     } catch (err) {
       console.error('Delete failed:', err);
     }
