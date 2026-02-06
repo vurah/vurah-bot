@@ -5,14 +5,16 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildBans
   ]
 });
 
-// Config — CHANGED PREFIX TO !!
-const PREFIX = '!!';
+// Config
+const PREFIX = '?';
 
-// GIF whitelists (unchanged)
+// GIF whitelists
 const whitelistedGIFs = new Set();
 const GIF_PATTERNS = [
   '.gif',
@@ -23,14 +25,17 @@ const GIF_PATTERNS = [
 ];
 
 // Automod words
-const blacklistedWords = new Set();          // triggers deletion
-const whitelistedExceptions = new Set();     // keeps message even if bad word present
+const blacklistedWords = new Set();
+const whitelistedExceptions = new Set();
 
 // Allowed roles bypass everything (from .env)
 const allowedRoleNames = (process.env.ALLOWED_ROLES || 'Admin,Moderator').split(',').map(r => r.trim().toLowerCase());
 
-// Automod Bypass role name (case-insensitive)
+// Automod Bypass role name
 const AUTOMOD_BYPASS_ROLE = 'automod bypass';
+
+// Your guild ID for instant slash commands
+const GUILD_ID = '1340471009094139914';
 
 client.once('ready', async () => {
   console.log(`Vurah Bot online! Prefix: ${PREFIX} | Tag: ${client.user.tag}`);
@@ -52,8 +57,17 @@ client.once('ready', async () => {
       .setDescription('View automod word lists and how to manage them')
   ];
 
-  await client.application.commands.set(commands);
-  console.log('Slash commands registered');
+  try {
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) {
+      console.error(`Guild ${GUILD_ID} not found`);
+    } else {
+      await guild.commands.set(commands);
+      console.log(`Slash commands registered in guild ${GUILD_ID}`);
+    }
+  } catch (error) {
+    console.error('Failed to register guild commands:', error);
+  }
 });
 
 function canManage(member) {
@@ -99,7 +113,9 @@ client.on('interactionCreate', async interaction => {
       .addFields(
         { name: `${PREFIX}addword <word>`, value: `Add to blacklist`, inline: true },
         { name: `${PREFIX}removeword <word>`, value: `Remove from blacklist`, inline: true },
-        { name: `${PREFIX}setup automod`, value: `Show this`, inline: true }
+        { name: `${PREFIX}setup automod`, value: `Show this`, inline: true },
+        { name: `${PREFIX}hardban <@user or ID>`, value: `Permanent ban + 7-day msg delete`, inline: true },
+        { name: `${PREFIX}hardunban <ID>`, value: `Unban user`, inline: true }
       )
       .setFooter({ text: 'Vurah Bot' });
 
@@ -123,7 +139,7 @@ client.on('messageCreate', async message => {
   const content = message.content.trim();
   const lowerContent = content.toLowerCase();
 
-  // Prefix commands (only mods)
+  // Prefix commands (mods only)
   if (content.startsWith(PREFIX)) {
     if (!canManage(member)) {
       return message.reply("Mods only for setup.").catch(() => {});
@@ -147,7 +163,9 @@ client.on('messageCreate', async message => {
         .addFields(
           { name: `${PREFIX}addword <word>`, value: `Add to blacklist`, inline: true },
           { name: `${PREFIX}removeword <word>`, value: `Remove from blacklist`, inline: true },
-          { name: `${PREFIX}setup automod`, value: `Show this`, inline: true }
+          { name: `${PREFIX}setup automod`, value: `Show this`, inline: true },
+          { name: `${PREFIX}hardban <@user or ID>`, value: `Permanent ban + 7-day msg delete`, inline: true },
+          { name: `${PREFIX}hardunban <ID>`, value: `Unban user`, inline: true }
         )
         .setFooter({ text: 'Vurah Bot' });
 
@@ -171,6 +189,45 @@ client.on('messageCreate', async message => {
       }
     }
 
+    else if (command === 'hardban') {
+      if (!member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+        return message.reply("You need Ban Members permission.").catch(() => {});
+      }
+
+      const target = message.mentions.members.first() || args[0];
+      if (!target) return message.reply(`Usage: ${PREFIX}hardban @user or ID`).catch(() => {});
+
+      let userId = target.id || target;
+
+      try {
+        await message.guild.bans.create(userId, {
+          deleteMessageSeconds: 604800,
+          reason: `Hardban by ${message.author.tag} via Vurah Bot`
+        });
+        reply = `**Hardbanned** <@${userId}> permanently. Last 7 days messages deleted.`;
+      } catch (err) {
+        console.error('Hardban failed:', err);
+        reply = `Failed to ban <@${userId}>: ${err.message}`;
+      }
+    }
+
+    else if (command === 'hardunban') {
+      if (!member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+        return message.reply("You need Ban Members permission.").catch(() => {});
+      }
+
+      const userId = args[0];
+      if (!userId) return message.reply(`Usage: ${PREFIX}hardunban ID`).catch(() => {});
+
+      try {
+        await message.guild.bans.remove(userId, `Unbanned by ${message.author.tag} via Vurah Bot`);
+        reply = `**Unbanned** <@${userId}>.`;
+      } catch (err) {
+        console.error('Hardunban failed:', err);
+        reply = `Failed to unban <@${userId}>: ${err.message}`;
+      }
+    }
+
     if (reply) {
       return message.channel.send(reply).catch(() => {});
     }
@@ -178,12 +235,11 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  // Deletion logic (GIF + words)
+  // Deletion logic — this is the full block (not cut off)
   let shouldDelete = false;
   let reason = '';
   let detected = '';
 
-  // GIF checks
   let detectedURL = '';
   for (const att of message.attachments.values()) {
     const url = att.url.toLowerCase();
@@ -218,7 +274,6 @@ client.on('messageCreate', async message => {
     shouldDelete = false;
   }
 
-  // Word check
   if (!shouldDelete) {
     for (const bad of blacklistedWords) {
       if (lowerContent.includes(bad)) {
@@ -245,16 +300,14 @@ client.on('messageCreate', async message => {
     try {
       await message.delete();
 
-      // Visible reply — made it stand out more
       const embed = new EmbedBuilder()
-        .setColor('#FF0000')                    // bright red so it's visible
+        .setColor('#FF0000')
         .setTitle('Message Deleted by Vurah Bot')
         .setDescription(`**Reason:** ${reason}${detected ? ` (${detected})` : ''}\n\nThis message violated server rules.`)
         .setFooter({ text: 'Vurah Bot • Auto-moderation' })
         .setTimestamp();
 
       await message.channel.send({ embeds: [embed] }).catch(() => {});
-
     } catch (err) {
       console.error('Delete failed:', err);
     }
