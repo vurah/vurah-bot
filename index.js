@@ -52,7 +52,8 @@ client.once('ready', async () => {
       .setDescription('View automod word lists and how to manage them')
   ];
 
-  await client.application.commands.set(commands);
+const guildId = '1456434255532916907';  // right-click server icon → Copy Server ID (enable Developer Mode in Discord settings if not visible)
+await client.application.commands.set(commands, guildId);
   console.log('Slash commands registered');
 });
 
