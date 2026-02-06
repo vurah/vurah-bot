@@ -10,7 +10,7 @@ const client = new Client({
 });
 
 // Config
-const PREFIX = ',';
+const PREFIX = '!!';
 
 // GIF whitelists
 const whitelistedGIFs = new Set();
