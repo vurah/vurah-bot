@@ -26,7 +26,7 @@ const GIF_PATTERNS = [
 const allowedRoleNames = (process.env.ALLOWED_ROLES || 'Admin,Moderator').split(',').map(r => r.trim().toLowerCase());
 
 client.once('ready', async () => {
-  console.log(`GifPoliceBot online and watching! 👮‍♂️🗑️ Tag: ${client.user.tag}`);
+  console.log(`Vurahbots online Tag: ${client.user.tag}`);
 
   // Register slash commands (only needs to run once-ish)
   const commands = [
@@ -143,7 +143,7 @@ client.on('messageCreate', async (message) => {
       await message.delete();
       const replyEmbed = new EmbedBuilder()
         .setColor('#FF5555')
-        .setTitle('🛑 No GIFs Allowed!')
+        .setTitle('Dont post that dumb shit ever again bitch')
         .setDescription(`${message.author}, GIFs are restricted here!\nReason: ${reason}\n\nMods can whitelist special ones with /allowgif 💜`)
         .setFooter({ text: 'GifPoliceBot' });
 
